@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq; // <-- Thêm dòng này để chạy được hàm Update mới
 using WindowsInput;
 
 namespace SteamController.Devices
@@ -60,6 +63,11 @@ namespace SteamController.Devices
                         keyRepeat = DateTime.Now.Add(FirstRepeat);
                     keyCodes.Add(key, keyRepeat);
                 }
+                else
+                {
+                    // Giải phóng phím khi truyền vào false
+                    keyCodes.Remove(key);
+                }
             }
         }
 
@@ -79,7 +87,6 @@ namespace SteamController.Devices
             try
             {
                 action();
-
                 Managers.SASManager.Valid = true;
             }
             catch (InvalidOperationException)
@@ -88,29 +95,42 @@ namespace SteamController.Devices
             }
         }
 
+        // HÀM UPDATE ĐÃ ĐƯỢC SỬA TOÀN BỘ LỖI NHẤP NHẢ VÀ LỖI ENUMERATION
         internal void Update()
         {
-            // Key Up: it is missing now
-            foreach (var keyUp in lastKeyCodes.Except(keyCodes))
+            var now = DateTime.Now;
+
+            // 1. KEY UP: Chờ 60ms để lọc bớt tín hiệu nhiễu/trễ từ nút phụ L4/L5/R4/R5
+            foreach (var keyUp in lastKeyCodes)
             {
-                Safe(() => simulator.Keyboard.KeyUp(keyUp.Key));
+                if (!keyCodes.ContainsKey(keyUp.Key))
+                {
+                    if (now - keyUp.Value > TimeSpan.FromMilliseconds(60)) 
+                    {
+                        Safe(() => simulator.Keyboard.KeyUp(keyUp.Key));
+                    }
+                    else
+                    {
+                        keyCodes[keyUp.Key] = keyUp.Value; 
+                    }
+                }
             }
 
-            // Key Down: new keys being down
+            // 2. KEY DOWN: Nhấn phím xuống
             foreach (var keyDown in keyCodes.Except(lastKeyCodes))
             {
                 Safe(() => simulator.Keyboard.KeyDown(keyDown.Key));
             }
 
-            // Key Repeats
-            var now = DateTime.Now;
-            foreach (var keyPress in keyCodes)
-            {
-                if (keyPress.Value > now)
-                    continue;
+            // 3. KEY REPEATS: Nhấn giữ phím liên tục mượt mà
+            var keysToRepeat = keyCodes.Where(keyPress => keyPress.Value <= now)
+                                       .Select(keyPress => keyPress.Key)
+                                       .ToArray();
 
-                Safe(() => simulator.Keyboard.KeyPress(keyPress.Key));
-                keyCodes[keyPress.Key] = DateTime.Now.Add(NextRepeats);
+            foreach (var key in keysToRepeat)
+            {
+                Safe(() => simulator.Keyboard.KeyPress(key));
+                keyCodes[key] = DateTime.Now.Add(NextRepeats);
             }
         }
 
