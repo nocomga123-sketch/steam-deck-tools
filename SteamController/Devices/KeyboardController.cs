@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq; // <-- Thêm dòng này để chạy được hàm Update mới
+using System.Linq;
 using WindowsInput;
 
 namespace SteamController.Devices
@@ -9,11 +9,17 @@ namespace SteamController.Devices
     {
         public static readonly TimeSpan FirstRepeat = TimeSpan.FromMilliseconds(400);
         public static readonly TimeSpan NextRepeats = TimeSpan.FromMilliseconds(45);
+        
+        // Thời gian chờ tối đa cho các nút phụ L4/L5 (60 mili-giây)
+        private static readonly TimeSpan MissingTimeout = TimeSpan.FromMilliseconds(60);
 
         InputSimulator simulator = new InputSimulator();
 
         Dictionary<VirtualKeyCode, DateTime> keyCodes = new Dictionary<VirtualKeyCode, DateTime>();
         Dictionary<VirtualKeyCode, DateTime> lastKeyCodes = new Dictionary<VirtualKeyCode, DateTime>();
+        
+        // Danh sách mới: Lưu thời điểm mà một phím bắt đầu bị mất tín hiệu từ tay cầm
+        Dictionary<VirtualKeyCode, DateTime> missingKeys = new Dictionary<VirtualKeyCode, DateTime>();
 
         public KeyboardController()
         {
@@ -65,7 +71,6 @@ namespace SteamController.Devices
                 }
                 else
                 {
-                    // Giải phóng phím khi truyền vào false
                     keyCodes.Remove(key);
                 }
             }
@@ -95,34 +100,54 @@ namespace SteamController.Devices
             }
         }
 
-        // HÀM UPDATE ĐÃ ĐƯỢC SỬA TOÀN BỘ LỖI NHẤP NHẢ VÀ LỖI ENUMERATION
         internal void Update()
         {
             var now = DateTime.Now;
 
-            // 1. KEY UP: Chờ 60ms để lọc bớt tín hiệu nhiễu/trễ từ nút phụ L4/L5/R4/R5
-            foreach (var keyUp in lastKeyCodes)
+            // BƯỚC 1: XỬ LÝ LỌC NHIỄU CHO NÚT L4/L5 KHI BỊ MẤT TÍN HIỆU GIỮA CÁC FRAME
+            // Duyệt qua các phím ở frame trước mà frame này tay cầm tạm thời không báo nhấn nữa
+            foreach (var key in lastKeyCodes.Keys)
             {
-                if (!keyCodes.ContainsKey(keyUp.Key))
+                if (!keyCodes.ContainsKey(key))
                 {
-                    if (now - keyUp.Value > TimeSpan.FromMilliseconds(60)) 
+                    if (!missingKeys.ContainsKey(key))
                     {
-                        Safe(() => simulator.Keyboard.KeyUp(keyUp.Key));
+                        // Đánh dấu thời điểm phím này bắt đầu bị mất tín hiệu
+                        missingKeys[key] = now;
                     }
-                    else
+
+                    // Nếu thời gian mất tín hiệu vẫn nằm trong khoảng cho phép (dưới 60ms)
+                    if (now - missingKeys[key] < MissingTimeout)
                     {
-                        keyCodes[keyUp.Key] = keyUp.Value; 
+                        // "Cứu" phím này bằng cách đưa nó ngược trở lại vào danh sách đang nhấn của frame hiện tại
+                        keyCodes[key] = lastKeyCodes[key];
                     }
                 }
             }
 
-            // 2. KEY DOWN: Nhấn phím xuống
+            // Xóa khỏi danh sách missing những phím đã có tín hiệu lại bình thường
+            var recoveredKeys = missingKeys.Keys.Where(k => keyCodes.ContainsKey(k) && now - missingKeys[k] < MissingTimeout).ToArray();
+            foreach (var key in recoveredKeys)
+            {
+                missingKeys.Remove(key);
+            }
+
+            // BƯỚC 2: KEY UP (Thực sự thả phím)
+            // Chỉ thả phím khi frame này không có VÀ nó đã vượt quá thời gian chờ 60ms
+            var keysToUp = lastKeyCodes.Keys.Except(keyCodes.Keys).ToArray();
+            foreach (var keyUp in keysToUp)
+            {
+                Safe(() => simulator.Keyboard.KeyUp(keyUp));
+                missingKeys.Remove(keyUp); // Xóa hẳn khỏi bộ nhớ theo dõi
+            }
+
+            // BƯỚC 3: KEY DOWN (Nhấn phím xuống lần đầu)
             foreach (var keyDown in keyCodes.Except(lastKeyCodes))
             {
                 Safe(() => simulator.Keyboard.KeyDown(keyDown.Key));
             }
 
-            // 3. KEY REPEATS: Nhấn giữ phím liên tục mượt mà
+            // BƯỚC 4: KEY REPEATS (Nhấn giữ lặp lại phím)
             var keysToRepeat = keyCodes.Where(keyPress => keyPress.Value <= now)
                                        .Select(keyPress => keyPress.Key)
                                        .ToArray();
