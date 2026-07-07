@@ -6,8 +6,8 @@ namespace SteamController.Profiles.Default
     {
         public const String ShortcutConsumed = "ShortcutsProfile";
         public readonly TimeSpan HoldForShorcuts = TimeSpan.FromMilliseconds(200);
-        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromSeconds(1);
-        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromSeconds(2);
+        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromSeconds(15);
 
         public override Status Run(Context c)
         {
