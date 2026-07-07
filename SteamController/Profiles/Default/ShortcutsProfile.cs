@@ -9,8 +9,8 @@ namespace SteamController.Profiles.Default
         public readonly TimeSpan HoldForShorcuts = TimeSpan.FromMilliseconds(200);
         
         // Giữ nguyên cấu hình thời gian 5 giây và 7 giây của bạn
-        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromMilliseconds(800);
-        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromMilliseconds(1400);
+        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromSeconds(3);
+        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromSeconds(5);
 
         public override Status Run(Context c)
         {
