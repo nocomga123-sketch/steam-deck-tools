@@ -1,3 +1,4 @@
+using System;
 using WindowsInput;
 
 namespace SteamController.Profiles.Default
@@ -6,40 +7,40 @@ namespace SteamController.Profiles.Default
     {
         public const String ShortcutConsumed = "ShortcutsProfile";
         public readonly TimeSpan HoldForShorcuts = TimeSpan.FromMilliseconds(200);
-        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromSeconds(10);
-        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromSeconds(15);
+        
+        // Giữ nguyên cấu hình thời gian 10 giây và 15 giây của bạn
+        private readonly TimeSpan HoldToSwitchProfile = TimeSpan.FromSeconds(5);
+        private readonly TimeSpan HoldToSwitchDesktop = TimeSpan.FromSeconds(7);
 
         public override Status Run(Context c)
         {
-            // Steam + 3 dots simulate CTRL+SHIFT+ESCAPE
+            // Steam + 3 dots simulate CTRL+SHIFT+ESCAPE (Mở Task Manager)
             if (c.Steam.BtnSteam.Hold(HoldForShorcuts, ShortcutConsumed) && c.Steam.BtnQuickAccess.HoldOnce(HoldForShorcuts, ShortcutConsumed))
             {
-                // Simulate CTRL+ALT+DELETE behavior (not working)
-                // c.Keyboard.KeyPress(new VirtualKeyCode[] { VirtualKeyCode.LCONTROL, VirtualKeyCode.LMENU }, VirtualKeyCode.DELETE);
-                // We can send CTRL+SHIFT+ESCAPE to bring up Task Manager at least
                 c.Keyboard.KeyPress(new VirtualKeyCode[] { VirtualKeyCode.LCONTROL, VirtualKeyCode.SHIFT }, VirtualKeyCode.ESCAPE);
                 return Status.Done;
             }
 
-            // Hold options for 1s to use next profile, or 3 seconds to switch between desktop-mode
-            if (c.Steam.BtnOptions.HoldOnce(HoldToSwitchProfile, ShortcutConsumed))
+            // Đảo mốc 15 giây (HoldChain) lên trước mốc 10 giây (HoldOnce) của nút Options (3 vạch)
+            if (c.Steam.BtnOptions.HoldChain(HoldToSwitchDesktop, ShortcutConsumed, "SwitchToDesktop"))
+            {
+                c.BackToDefault();
+                return Status.Done;
+            }
+            else if (c.Steam.BtnOptions.HoldOnce(HoldToSwitchProfile, ShortcutConsumed))
             {
                 if (!c.SelectNext())
                     c.BackToDefault();
                 return Status.Done;
             }
-            else if (c.Steam.BtnOptions.HoldChain(HoldToSwitchDesktop, ShortcutConsumed, "SwitchToDesktop"))
-            {
-                c.BackToDefault();
-                return Status.Done;
-            }
 
-            // Always consume 3 dots
+            // Luôn tiêu thụ nút 3 chấm (Quick Access) để tránh bị nhận diện nhầm lệnh khác
             if (c.Steam.BtnQuickAccess.Hold(HoldForShorcuts, ShortcutConsumed))
             {
                 return Status.Done;
             }
 
+            // Tổ hợp phím giữ nút Steam + Nút khác
             if (c.Steam.BtnSteam.Hold(HoldForShorcuts, ShortcutConsumed))
             {
                 if (SteamShortcuts(c))
@@ -53,12 +54,14 @@ namespace SteamController.Profiles.Default
 
         protected virtual bool SteamShortcuts(Context c)
         {
+            // Nút Steam + Options (Nút 3 vạch) -> Mở Task View (Win + Tab)
             if (c.Steam.BtnOptions.Pressed())
             {
                 c.Keyboard.KeyPress(VirtualKeyCode.LWIN, VirtualKeyCode.TAB);
                 return true;
             }
 
+            // Nút Steam + Menu (Nút 2 ô vuông) -> Bật/Tắt Toàn màn hình (F11)
             if (c.Steam.BtnMenu.Pressed())
             {
                 c.Keyboard.KeyPress(VirtualKeyCode.F11);
